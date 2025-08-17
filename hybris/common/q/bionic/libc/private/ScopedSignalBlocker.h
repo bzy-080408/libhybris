@@ -29,14 +29,14 @@
 #define _KERNEL__NSIG 64
 #endif
 
-/* Userspace's NSIG is the kernel's _NSIG + 1. */
-#define _NSIG (_KERNEL__NSIG + 1)
+#ifdef __GLIBC__
+  /* Userspace's NSIG is the kernel's _NSIG + 1. */
+  #define _NSIG (_KERNEL__NSIG + 1)
+#endif
+
 #define NSIG _NSIG
 
 typedef int sig_atomic_t;
-
-typedef __sighandler_t sig_t; /* BSD compatibility. */
-typedef __sighandler_t sighandler_t; /* glibc compatibility. */
 
 #if defined(__LP64__) || defined(__mips__)
 typedef sigset_t sigset64_t;

@@ -91,6 +91,7 @@ if get_option('arm_tracing')
   libhybris_common_sources += ['wrappers.c', 'wrapper_code_generic_arm.c']
 endif
 
+# <<<<<<< meson
 # For musl/OpenHarmony, dl functions are built into libc
 dl_dep = cc.find_library('dl', required : false)
 if not dl_dep.found()
@@ -123,6 +124,12 @@ endif
 if rt_dep.found()
   libhybris_common_deps += [rt_dep]
 endif
+# =======
+# dl_dep = cc.find_library('dl', required : true)
+# rt_dep = cc.find_library('rt', required : true)
+# 
+# libhybris_common_deps = [dl_dep, hybris_dep, rt_dep, thread_dep]
+# >>>>>>> ohos
 
 libhybris_common = library('hybris-common',
   libhybris_common_sources,

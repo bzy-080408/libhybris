@@ -26,6 +26,8 @@
  * SUCH DAMAGE.
  */
 
+#include "hybris_compat.h"
+
 #include <android/api-level.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -112,21 +114,21 @@ static const char* const kLdGeneratedConfigFilePath = "/linkerconfig/ld.config.t
 #endif
 
 #if defined(__LP64__)
-static const char* const kSystemLibDir        = "/system/lib64";
-static const char* const kOdmLibDir           = "/odm/lib64";
-static const char* const kVendorLibDir        = "/vendor/lib64";
-static const char* const kAsanSystemLibDir    = "/data/asan/system/lib64";
-static const char* const kAsanOdmLibDir       = "/data/asan/odm/lib64";
-static const char* const kAsanVendorLibDir    = "/data/asan/vendor/lib64";
-static const char* const kRuntimeApexLibDir   = "/apex/com.android.runtime/lib64";
+static const char* const kSystemLibDir        = "/android/system/lib64";
+static const char* const kOdmLibDir           = "/android/odm/lib64";
+static const char* const kVendorLibDir        = "/android/vendor/lib64";
+static const char* const kAsanSystemLibDir    = "/android/data/asan/system/lib64";
+static const char* const kAsanOdmLibDir       = "/android/data/asan/odm/lib64";
+static const char* const kAsanVendorLibDir    = "/android/data/asan/vendor/lib64";
+static const char* const kRuntimeApexLibDir   = "/android/apex/com.android.runtime/lib64";
 #else
-static const char* const kSystemLibDir        = "/system/lib";
-static const char* const kOdmLibDir           = "/odm/lib";
-static const char* const kVendorLibDir        = "/vendor/lib";
-static const char* const kAsanSystemLibDir    = "/data/asan/system/lib";
-static const char* const kAsanOdmLibDir       = "/data/asan/odm/lib";
-static const char* const kAsanVendorLibDir    = "/data/asan/vendor/lib";
-static const char* const kRuntimeApexLibDir   = "/apex/com.android.runtime/lib";
+static const char* const kSystemLibDir        = "/android/system/lib";
+static const char* const kOdmLibDir           = "/android/odm/lib";
+static const char* const kVendorLibDir        = "/android/vendor/lib";
+static const char* const kAsanSystemLibDir    = "/android/data/asan/system/lib";
+static const char* const kAsanOdmLibDir       = "/android/data/asan/odm/lib";
+static const char* const kAsanVendorLibDir    = "/android/data/asan/vendor/lib";
+static const char* const kRuntimeApexLibDir   = "/android/apex/com.android.runtime/lib";
 #endif
 
 static const char* const kAsanLibDirPrefix = "/data/asan";
@@ -1174,10 +1176,10 @@ static int open_library(android_namespace_t* ns,
   }
 
   // Otherwise we try LD_LIBRARY_PATH first, and fall back to the default library path
-  TRACE("[ opening %s from namespace %s from %s]", name, ns->get_name(),ns->get_ld_library_paths());
+  TRACE("[ opening %s from namespace %s from %s]", name, ns->get_name(), join(ns->get_ld_library_paths(), ':').c_str());
   int fd = open_library_on_paths(zip_archive_cache, name, file_offset, ns->get_ld_library_paths(), realpath);
   if (fd == -1 && needed_by != nullptr) {
-    TRACE("[ opening %s from namespace %s from %s]", name, ns->get_name(),needed_by->get_dt_runpath());
+    TRACE("[ opening %s from namespace %s from %s]", name, ns->get_name(), join(needed_by->get_dt_runpath(), ':').c_str());
     fd = open_library_on_paths(zip_archive_cache, name, file_offset, needed_by->get_dt_runpath(), realpath);
     // Check if the library is accessible
     if (fd != -1 && !ns->is_accessible(*realpath)) {
@@ -1187,7 +1189,7 @@ static int open_library(android_namespace_t* ns,
   }
 
   if (fd == -1) {
-    TRACE("[ opening %s from namespace %s from %s]", name, ns->get_name(),ns->get_default_library_paths());
+    TRACE("[ opening %s from namespace %s from %s]", name, ns->get_name(), join(ns->get_default_library_paths(), ':').c_str());
     fd = open_library_on_paths(zip_archive_cache, name, file_offset, ns->get_default_library_paths(), realpath);
   }
 
@@ -1199,7 +1201,7 @@ int open_executable(const char* path, off64_t* file_offset, std::string* realpat
   return open_library_at_path(&zip_archive_cache, path, file_offset, realpath);
 }
 
-const char* fix_dt_needed(const char* dt_needed, const char* sopath __unused) {
+const char* fix_dt_needed(const char* dt_needed, const char* sopath __UNUSED) {
 #if !defined(__LP64__)
   // Work around incorrect DT_NEEDED entries for old apps: http://b/21364029
   int app_target_api_level = get_application_target_sdk_version();
@@ -1466,7 +1468,9 @@ static bool load_library(android_namespace_t* ns,
   // Open the file.
   int fd = open_library(ns, zip_archive_cache, name, needed_by, &file_offset, &realpath);
   if (fd == -1) {
-    DL_ERR("library \"%s\" not found", name);
+    const char *env = getenv("HYBRIS_LD_DEBUG");
+    if (env != NULL)
+      DL_ERR("library \"%s\" not found", name);
     return false;
   }
 
@@ -2873,7 +2877,7 @@ bool soinfo::relocate_relr() {
 
 #if !defined(__mips__)
 #if defined(USE_RELA)
-static ElfW(Addr) get_addend(ElfW(Rela)* rela, ElfW(Addr) reloc_addr __unused) {
+static ElfW(Addr) get_addend(ElfW(Rela)* rela, ElfW(Addr) reloc_addr __UNUSED) {
   return rela->r_addend;
 }
 #else
@@ -3275,15 +3279,15 @@ bool soinfo::relocate(const VersionTracker& version_tracker, ElfRelIteratorT&& r
       case R_AARCH64_ABS64:
         count_relocation(kRelocAbsolute);
         MARK(rel->r_offset);
-        TRACE_TYPE(RELO, "RELO ABS64 %16llx <- %16llx %s\n",
-                   reloc, sym_addr + addend, sym_name);
+        TRACE_TYPE(RELO, "RELO ABS64 %16" PRIxPTR " <- %16" PRIxPTR " %s\n",
+                   static_cast<uintptr_t>(reloc), static_cast<uintptr_t>(sym_addr + addend), sym_name);
         *reinterpret_cast<ElfW(Addr)*>(reloc) = sym_addr + addend;
         break;
       case R_AARCH64_ABS32:
         count_relocation(kRelocAbsolute);
         MARK(rel->r_offset);
-        TRACE_TYPE(RELO, "RELO ABS32 %16llx <- %16llx %s\n",
-                   reloc, sym_addr + addend, sym_name);
+        TRACE_TYPE(RELO, "RELO ABS32 %16" PRIxPTR " <- %16" PRIxPTR " %s\n",
+                   static_cast<uintptr_t>(reloc), static_cast<uintptr_t>(sym_addr + addend), sym_name);
         {
           const ElfW(Addr) min_value = static_cast<ElfW(Addr)>(INT32_MIN);
           const ElfW(Addr) max_value = static_cast<ElfW(Addr)>(UINT32_MAX);
@@ -3291,8 +3295,8 @@ bool soinfo::relocate(const VersionTracker& version_tracker, ElfRelIteratorT&& r
               ((sym_addr + addend) <= max_value)) {
             *reinterpret_cast<ElfW(Addr)*>(reloc) = sym_addr + addend;
           } else {
-            DL_ERR("0x%016llx out of range 0x%016llx to 0x%016llx",
-                   sym_addr + addend, min_value, max_value);
+            DL_ERR("0x%016" PRIxPTR " out of range 0x%016" PRIxPTR " to 0x%016" PRIxPTR,
+                   static_cast<uintptr_t>(sym_addr + addend), static_cast<uintptr_t>(min_value), static_cast<uintptr_t>(max_value));
             return false;
           }
         }
@@ -3300,8 +3304,8 @@ bool soinfo::relocate(const VersionTracker& version_tracker, ElfRelIteratorT&& r
       case R_AARCH64_ABS16:
         count_relocation(kRelocAbsolute);
         MARK(rel->r_offset);
-        TRACE_TYPE(RELO, "RELO ABS16 %16llx <- %16llx %s\n",
-                   reloc, sym_addr + addend, sym_name);
+        TRACE_TYPE(RELO, "RELO ABS16 %16" PRIxPTR " <- %16" PRIxPTR " %s\n",
+                   static_cast<uintptr_t>(reloc), static_cast<uintptr_t>(sym_addr + addend), sym_name);
         {
           const ElfW(Addr) min_value = static_cast<ElfW(Addr)>(INT16_MIN);
           const ElfW(Addr) max_value = static_cast<ElfW(Addr)>(UINT16_MAX);
@@ -3309,8 +3313,8 @@ bool soinfo::relocate(const VersionTracker& version_tracker, ElfRelIteratorT&& r
               ((sym_addr + addend) <= max_value)) {
             *reinterpret_cast<ElfW(Addr)*>(reloc) = (sym_addr + addend);
           } else {
-            DL_ERR("0x%016llx out of range 0x%016llx to 0x%016llx",
-                   sym_addr + addend, min_value, max_value);
+            DL_ERR("0x%016" PRIxPTR " out of range 0x%016" PRIxPTR " to 0x%016" PRIxPTR,
+                   static_cast<uintptr_t>(sym_addr + addend), static_cast<uintptr_t>(min_value), static_cast<uintptr_t>(max_value));
             return false;
           }
         }
@@ -3318,15 +3322,15 @@ bool soinfo::relocate(const VersionTracker& version_tracker, ElfRelIteratorT&& r
       case R_AARCH64_PREL64:
         count_relocation(kRelocRelative);
         MARK(rel->r_offset);
-        TRACE_TYPE(RELO, "RELO REL64 %16llx <- %16llx - %16llx %s\n",
-                   reloc, sym_addr + addend, rel->r_offset, sym_name);
+        TRACE_TYPE(RELO, "RELO REL64 %16" PRIxPTR " <- %16" PRIxPTR " - %16" PRIxPTR " %s\n",
+                   static_cast<uintptr_t>(reloc), static_cast<uintptr_t>(sym_addr + addend), static_cast<uintptr_t>(rel->r_offset), sym_name);
         *reinterpret_cast<ElfW(Addr)*>(reloc) = sym_addr + addend - rel->r_offset;
         break;
       case R_AARCH64_PREL32:
         count_relocation(kRelocRelative);
         MARK(rel->r_offset);
-        TRACE_TYPE(RELO, "RELO REL32 %16llx <- %16llx - %16llx %s\n",
-                   reloc, sym_addr + addend, rel->r_offset, sym_name);
+        TRACE_TYPE(RELO, "RELO REL32 %16" PRIxPTR " <- %16" PRIxPTR " - %16" PRIxPTR " %s\n",
+                   static_cast<uintptr_t>(reloc), static_cast<uintptr_t>(sym_addr + addend), static_cast<uintptr_t>(rel->r_offset), sym_name);
         {
           const ElfW(Addr) min_value = static_cast<ElfW(Addr)>(INT32_MIN);
           const ElfW(Addr) max_value = static_cast<ElfW(Addr)>(UINT32_MAX);
@@ -3334,8 +3338,8 @@ bool soinfo::relocate(const VersionTracker& version_tracker, ElfRelIteratorT&& r
               ((sym_addr + addend - rel->r_offset) <= max_value)) {
             *reinterpret_cast<ElfW(Addr)*>(reloc) = sym_addr + addend - rel->r_offset;
           } else {
-            DL_ERR("0x%016llx out of range 0x%016llx to 0x%016llx",
-                   sym_addr + addend - rel->r_offset, min_value, max_value);
+            DL_ERR("0x%016" PRIxPTR " out of range 0x%016" PRIxPTR " to 0x%016" PRIxPTR,
+                   static_cast<uintptr_t>(sym_addr + addend - rel->r_offset), static_cast<uintptr_t>(min_value), static_cast<uintptr_t>(max_value));
             return false;
           }
         }
@@ -3343,8 +3347,8 @@ bool soinfo::relocate(const VersionTracker& version_tracker, ElfRelIteratorT&& r
       case R_AARCH64_PREL16:
         count_relocation(kRelocRelative);
         MARK(rel->r_offset);
-        TRACE_TYPE(RELO, "RELO REL16 %16llx <- %16llx - %16llx %s\n",
-                   reloc, sym_addr + addend, rel->r_offset, sym_name);
+        TRACE_TYPE(RELO, "RELO REL16 %16" PRIxPTR " <- %16" PRIxPTR " - %16" PRIxPTR " %s\n",
+                   static_cast<uintptr_t>(reloc), static_cast<uintptr_t>(sym_addr + addend), static_cast<uintptr_t>(rel->r_offset), sym_name);
         {
           const ElfW(Addr) min_value = static_cast<ElfW(Addr)>(INT16_MIN);
           const ElfW(Addr) max_value = static_cast<ElfW(Addr)>(UINT16_MAX);
@@ -3352,8 +3356,8 @@ bool soinfo::relocate(const VersionTracker& version_tracker, ElfRelIteratorT&& r
               ((sym_addr + addend - rel->r_offset) <= max_value)) {
             *reinterpret_cast<ElfW(Addr)*>(reloc) = sym_addr + addend - rel->r_offset;
           } else {
-            DL_ERR("0x%016llx out of range 0x%016llx to 0x%016llx",
-                   sym_addr + addend - rel->r_offset, min_value, max_value);
+            DL_ERR("0x%016" PRIxPTR " out of range 0x%016" PRIxPTR " to 0x%016" PRIxPTR,
+                   static_cast<uintptr_t>(sym_addr + addend - rel->r_offset), static_cast<uintptr_t>(min_value), static_cast<uintptr_t>(max_value));
             return false;
           }
         }

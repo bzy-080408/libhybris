@@ -1,5 +1,8 @@
 {
     "files.associations": {
         "cstdint": "cpp"
+        "pthread.h": "c",
+        "gralloc.h": "c",
+        "stddef.h": "c"
     }
 }
